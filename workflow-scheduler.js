@@ -199,3 +199,12 @@ ddoc.views.dependancies = {
         }
     }
 };
+
+
+ddoc.filters.finishedJobs = function(doc, req) {
+    if (doc.status === 'done') {
+        return true;
+    } else {
+        return false;
+    }
+};
