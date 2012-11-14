@@ -44,7 +44,7 @@ sub _save_doc {
 
     my $resp = $self->{'server'}->request($req);
 
-    my $resp_headers = $self->{'json'}->decode($res->content);
+    my $resp_headers = $self->json_decode($res->content);
     $doc->{_id} = $resp_headers->{id};
     $doc->{_rev} = $resp_headers->{rev};
 
@@ -59,7 +59,7 @@ sub _get_doc {
     $req->header('Content-Type', 'application/json');
 
     my $resp = $self->{'server'}->request($req);
-    return eval { $self->{'json'}->decode($resp->content) };
+    return eval { $self->json_decode($resp->content) };
 }
 
 
@@ -90,7 +90,7 @@ sub get_next_runnable_job {
 
     my $resp = $self->{'server'}->request($req);
 
-    my $data = $self->{'json'}->decode($resp->content);
+    my $data = $self->json_decode($resp->content);
     return eval { $data->{'rows'}->[0]->{'id'} };
 }
 
@@ -183,7 +183,7 @@ sub remove_job_as_dependancy {
     my $req = HTTP::Request->new(GET => $uri);
     my $resp = $self->{'server'}->request($req);
 
-    my $data = $self->{'json'}->decode($resp->content);
+    my $data = $self->json_decode($resp->content);
     my @dep_job_ids;
     foreach ( @{$data->{'rows'}} ) {
         push @dep_job_ids, $_->{'id'};
@@ -224,6 +224,11 @@ sub changes_for_scheduler {
     return $fh;
 }
 
+sub json_decode {
+    my $self = shift;
+    $self->{'json'}->decode(shift);
+}
+
 sub _read_line_from_fh {
     my($self, $fh) = @_;
 
@@ -243,7 +248,7 @@ sub get_finished_job_id_from_changes {
 
     my $line = $self->_read_line_from_fh($fh);
     chomp($line);
-    my $data = $self->{'json'}->decode($line);
+    my $data = $self->json_decode($line);
     return $data->{'id'};
 }
 
@@ -253,7 +258,7 @@ sub current_update_seq {
     my $req = HTTP::Request->new(GET => $self->{'uri'});
     my $resp = $self->{'server'}->request($req);
 
-    my $data = $self->{'json'}->decode($resp->content);
+    my $data = $self->json_decode($resp->content);
     return $data->{'update_seq'};
 }
     
