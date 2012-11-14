@@ -23,10 +23,13 @@ while(1) {
     } else {
         print "Waiting for something to run...\n";
         while ($changes_select->can_read(1)) {
-            my $id = $server->get_finished_job_id_from_changes($changes_fh);
-            $server->remove_job_as_dependancy($id);
+            clean_up_from_done_job($changes_fh);
         }
     }
 }
 
-    
+sub clean_up_from_done_job {
+    my $fh = shift;
+    my $id = $server->get_finished_job_id_from_changes($fh);
+    $server->remove_job_as_dependancy($id);
+}
