@@ -208,3 +208,17 @@ ddoc.filters.finishedJobs = function(doc, req) {
         return false;
     }
 };
+
+ddoc.filters.newReadyToRun = function(doc, req) {
+    if (doc.status === 'done') {
+        // A job just finished
+        return true;
+    } else if ((doc.status === 'waiting')
+                && ((doc.depends !== undefined) && (doc.depends !== null) && (doc.depends.length > 0))
+    ) {
+        // A new job was submitted that has no dependancies
+        return true;
+    } else {
+        return false;
+    }
+}

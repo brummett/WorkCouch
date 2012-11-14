@@ -94,6 +94,21 @@ sub get_next_runnable_job {
     return eval { $data->{'rows'}->[0]->{'id'} };
 }
 
+sub get_runnable_jobs {
+    my $self = shift;
+
+    my $uri = join('/', $self->{'uri'}, $designDoc, '_view', 'runnable');
+    my $req = HTTP::Request->new(GET => $uri);
+    $req->header('Content-Type', 'application/json');
+
+    my $resp = $self->{'server'}->request($req);
+
+    my $data = $self->json_decode($resp->content);
+    return [] unless ($data && $data->{rows});
+
+    $ready_job_ids = [ map { $_->{id} } @{$data->{rows}} ];
+    return $ready_job_ids;
+}
 
 sub schedule_job {
     my($self, $job_id, $mechanism) = @_;
@@ -104,7 +119,7 @@ sub schedule_job {
     my $queued_job_id;
     if ($mechanism eq 'lsf') {
         my $queue = $job->{'queueId'};
-        my $output = `bsub -q $queue $job_runner $job_id`;
+        my $output = `bsub -B -N -q $queue $job_runner $job_id`;
         # Job <4791315> is submitted to queue <short>.
         ($queued_job_id) = ($output =~ m/Job \<(\d+)\> is/);
 
@@ -204,7 +219,7 @@ sub changes_for_scheduler {
     my $since = shift;
 
     my $design_doc_name = (split('/',$designDoc))[1];
-    my $filter_name = $design_doc_name . '/finishedJobs';
+    my $filter_name = $design_doc_name . '/newReadyToRun';
     my $uri = join('/', $self->{'uri'}, "_changes?feed=continuous&filter=$filter_name");
     if ($since) {
         $uri .= "&since=$since";
@@ -240,16 +255,6 @@ sub _read_line_from_fh {
         }
     }
     return $line;
-}
-
-sub get_finished_job_id_from_changes {
-    my $self = shift;
-    my $fh = shift;
-
-    my $line = $self->_read_line_from_fh($fh);
-    chomp($line);
-    my $data = $self->json_decode($line);
-    return $data->{'id'};
 }
 
 
