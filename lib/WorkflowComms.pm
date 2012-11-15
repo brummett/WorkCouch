@@ -135,6 +135,19 @@ sub schedule_job {
     $self->job_is_queued($job_id, $queued_job_id);
 }
 
+sub schedule_job_fake {
+    my($self, $job_id, $mechanism) = @_;
+
+    my $job = $self->_get_doc($job_id);
+    return unless $job;
+
+    my $queued_job_id = 'fake';
+    $self->job_is_queued($job_id, $queued_job_id);
+    $self->job_is_running($job_id, $$);
+    $self->job_is_done($job_id, result => 0);
+}
+    
+
 sub job_is_queued {
     my($self,$job_id, $queued_job_id) = @_;
     my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'scheduled', $job_id);
