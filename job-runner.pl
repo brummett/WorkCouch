@@ -17,7 +17,7 @@ print STDERR "job runner for job $job_id\n";
 my $job = $server->_get_doc($job_id);
 my $command = $job->{'cmdline'};
 
-my $job_start_time = Time::HiRes::Time();
+my $job_start_time = Time::HiRes::time();
 my $pid = fork();
 if (defined($pid) && !$pid) {
     # child
@@ -35,7 +35,7 @@ if ($result ne 'success') {
 
 print STDERR "Job runner waiting for child $pid to exit\n";
 waitpid($pid, 0);
-my $job_wall_time = Time::HiRes::Time() - $job_start_time;
+my $job_wall_time = Time::HiRes::time() - $job_start_time;
 my($user,$system,$cuser,$csystem) = times();
 
 my $exit_code = $? >> 8;
