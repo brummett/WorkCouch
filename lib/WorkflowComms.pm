@@ -146,6 +146,48 @@ sub schedule_job_fake {
     $self->job_is_running($job_id, $$);
     $self->job_is_done($job_id, result => 0);
 }
+
+
+
+sub signalChildren {
+    my($self, $job) = @_;
+
+    # NOTE: We could also try making a view where the keys are job IDs
+    # and the value is the dependant list.  Maybe that would be faster than
+    # retrieving the whole doc?
+    if (!ref($job)) {
+        # it's a job id - get the doc
+        $job = $self->_get_doc($job_id);
+    }
+
+    my $base_uri = join('/', $self->{'uri'}, $designDoc, '_update', 'parentIsDone/');
+    foreach my $dep_job_id ( @{$job->{'dependants'}} ) {
+        my $uri = $base_uri . $dep_job_id;
+        my $req = HTTP::Request->new(PUT => $uri);
+        my $resp = eval { $self->{'server'}->request($req) };
+        if ($@) {
+            if ($@ =~ m/409/) {
+                # update conflict, try again
+                redo;
+            } else {
+                # somethiong else went wrong, rethrow the exception
+                die $@;
+            }
+        }
+    }
+}
+
+
+sub add_dependant {
+    my($self, $parent_job_id, $dep_job_id) = @_;
+
+    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'addDependant', $parent_job_id);
+    $uri .= "?jobId=$dep_job_id";
+    my $req = HTTP::Request->new(PUT => $uri);
+    my $resp = $self->{'server'}->request($req);
+    return $resp->content;
+}
+
     
 
 sub job_is_queued {
@@ -228,7 +270,7 @@ sub remove_job_as_dependancy {
 }
 
 
-sub changes_for_scheduler {
+sub Xchanges_for_scheduler {
     my $self = shift;
     my $since = shift;
 
@@ -252,6 +294,33 @@ sub changes_for_scheduler {
 
     return $fh;
 }
+
+
+sub changes_for_scheduler {
+    my $self = shift;
+    my $since = shift;
+
+    my $design_doc_name = (split('/',$designDoc))[1];
+    my $filter_name = $design_doc_name . '/readyToRun';
+    my $uri = join('/', $self->{'uri'}, "_changes?feed=continuous&filter=$filter_name&include_docs=true");
+    if ($since) {
+        $uri .= "&since=$since";
+    }
+    my $request = HTTP::Request->new(GET => $uri);
+
+    my $fh = IO::Socket::INET->new($self->{'host'});
+    $fh->print($request->as_string);
+
+    # read in the whole response
+    while (1) {
+        my $resp = $self->_read_line_from_fh($fh);
+        $resp =~ s/\r|\n//g;  # Remove newline sequence
+        last unless ($resp);
+    }
+
+    return $fh;
+}
+
 
 sub json_decode {
     my $self = shift;

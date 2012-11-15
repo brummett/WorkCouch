@@ -49,13 +49,14 @@ ddoc.updates.enqueue = function(doc,req) {
     doc.queueId     = req.query.queueId || req.form.queueId;
     doc.label       = req.query.label || req.form.label;
     doc.cmdline     = req.query.cmdline || req.form.cmdline;
+    doc.waitingOn   = parseInt(req.query.waitingOn) || parseInt(req.form.waitingOn) || 0;
     doc.submitTime  = Date.now();  // milliseconds
 
-    if ('depends' in req.query) {
-        doc.depends     = [ req.query.depends ];
-    } else if ('depends' in req.form) {
-        doc.depends     = req.form.depends;
-    }
+    //if ('depends' in req.query) {
+    //    doc.depends     = [ req.query.depends ];
+    //} else if ('depends' in req.form) {
+    //    doc.depends     = req.form.depends;
+    //}
 
     if ('id' in req.query) {
         doc._id = req.query.id;
@@ -177,16 +178,46 @@ ddoc.updates.removeDependancy = function(doc,req) {
     return [null, 'error: No dependancy matching that id'];
 };
 
+// Decrement the waitingOn counter for a dependant job
+ddoc.updates.parentIsDone = function(doc,req) {
+    if (!doc) {
+        return [null, 'error: No job matching that id'];
+    }
+
+    doc.waitingOn--;
+    return [doc, 'success'];
+}
+
+// Add the given job ID as a dependant of this parent job
+ddoc.updates.addDependant = function(doc,req) {
+    if (!doc) {
+        return [null, 'error: No job matching that id'];
+    }
+
+    doc.dependants = doc.dependants || [];
+    doc.dependants.push(req.query.jobId);
+    return [doc, 'success'];
+}
+
 // Return all the jobs with no dependant jobs
+//ddoc.views.runnable = {
+//    'map': function(doc) {
+//        if ( (doc.status === 'waiting')
+//            &&
+//            ((doc.depends === undefined) || (doc.depends === null) || (doc.depends.length === 0))
+//        ) {
+//            emit(doc._id, null);
+//        }
+//   }
+//};
+
+// Return all the jobs where waitingOn is 0
 ddoc.views.runnable = {
     'map': function(doc) {
-        if ( (doc.status === 'waiting')
-            &&
-            ((doc.depends === undefined) || (doc.depends === null) || (doc.depends.length === 0))
-        ) {
+        if ((doc.status === 'waiting') && (! doc.waitingOn)) {
             emit(doc._id, null);
         }
-   }
+    }
 };
 
 // keys are dependancies, values are the job ID that depends on that one
@@ -217,6 +248,18 @@ ddoc.filters.newReadyToRun = function(doc, req) {
                 && ((doc.depends !== undefined) && (doc.depends !== null) && (doc.depends.length > 0))
     ) {
         // A new job was submitted that has no dependancies
+        return true;
+    } else {
+        return false;
+    }
+}
+
+ddoc.filters.readyToRun = function(doc, req) {
+    if (doc.status === 'done') {
+        // a job just finished
+        return true;
+    } else if ( (doc.status === 'waiting') && (! doc.waitingOn)) {
+        // A job is now waiting on no new jobs
         return true;
     } else {
         return false;
