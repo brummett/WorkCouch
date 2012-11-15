@@ -221,15 +221,15 @@ ddoc.views.runnable = {
 };
 
 // keys are dependancies, values are the job ID that depends on that one
-ddoc.views.dependancies = {
-    'map': function(doc) {
-        if ((doc.depends !== undefined) && (doc.depends !== null) && (doc.depends.length > 0)) {
-            doc.depends.forEach(function(job_id) {
-                emit(job_id, doc._id);
-            });
-        }
-    }
-};
+//ddoc.views.dependancies = {
+//    'map': function(doc) {
+//        if ((doc.depends !== undefined) && (doc.depends !== null) && (doc.depends.length > 0)) {
+//            doc.depends.forEach(function(job_id) {
+//                emit(job_id, doc._id);
+//            });
+//        }
+//    }
+//};
 
 
 ddoc.filters.finishedJobs = function(doc, req) {
