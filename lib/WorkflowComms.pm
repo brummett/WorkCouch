@@ -124,25 +124,26 @@ sub schedule_job {
         ($queued_job_id) = ($output =~ m/Job \<(\d+)\> is/);
 
     } elsif ($mechanism eq 'fork') {
-        print "About to schedule via fork()\n";
         $queued_job_id = fork();
-        print "queued job id $queued_job_id\n";
         if (defined($queued_job_id) && !$queued_job_id) {
-            print "About to start job runner: $job_runner $job_id\n";
             exec($job_runner,$job_id);
             print "exec failed! $!\n";
             exit(1);
         }
     }
 
-    print "Job scheduled queued id is $queued_job_id\n";
-    
+    $self->job_is_queued($job_id, $queued_job_id);
+}
+
+sub job_is_queued {
+    my($self,$job_id, $queued_job_id) = @_;
     my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'scheduled', $job_id);
     $uri .= "?queueId=$queued_job_id";
     my $req = HTTP::Request->new(PUT => $uri);
     my $resp = $self->{'server'}->request($req);
     return $resp->content;
 }
+
 
 sub job_is_running {
     my($self,$job_id, $pid) = @_;
