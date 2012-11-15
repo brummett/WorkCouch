@@ -2,10 +2,12 @@
 
 use WorkflowComms;
 
+my $count = $ARGV[0];
+
 my $server = WorkflowComms->new('http://localhost:5985/workflow/');
 
 my $last_doc_id;
-foreach my $i ( 1 .. 100 ) {
+foreach my $i ( 1 .. $count ) {
     my $id = $server->enqueue({
         workflowId  => 1,
         clusterId   => 1,

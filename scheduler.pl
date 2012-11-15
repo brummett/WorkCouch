@@ -7,10 +7,12 @@ use WorkflowComms;
 use AnyEvent;
 use Data::Dumper;
 
+my $waiting_on_jobs = $ARGV[0] || 100;
+
 my $uri = 'http://localhost:5985/workflow';
 my $server = WorkflowComms->new($uri);
 
-my $last_seq = $ARGV[0] || $server->current_update_seq();
+my $last_seq = $server->current_update_seq();
 
 my $changes_fh = $server->changes_for_scheduler($last_seq);
 my $changes_watcher = AnyEvent->io(fh => $changes_fh, poll => 'r',
@@ -19,7 +21,6 @@ my $changes_watcher = AnyEvent->io(fh => $changes_fh, poll => 'r',
 my $done = AnyEvent->condvar;
 my $int_watcher = AnyEvent->signal(signal => 'INT', cb => sub{ $done->send });
 
-my $waiting_on_jobs = 100;
 
 # Initially, get the list of runnable jobs and run them
 &start_runnable_jobs();

@@ -2,6 +2,8 @@
 
 use WorkflowComms;
 
+my $count = $ARGV[0] - 2;  # subtract the starting and ending nodes
+
 my $server = WorkflowComms->new('http://localhost:5985/workflow/');
 
 # make a starting node
@@ -16,7 +18,7 @@ my $starting_id = $server->enqueue({
     });
 
 my @middle_ids;
-foreach my $i ( 1 .. 98 ) {
+foreach my $i ( 1 .. $count ) {
     my $id = $server->enqueue({
         workflowId  => 1,
         clusterId   => 1,
