@@ -31,7 +31,8 @@ $done->recv();
 sub start_runnable_jobs {
     my $ready_job_ids = $server->get_runnable_jobs();
     foreach ( @$ready_job_ids) {
-        $server->schedule_job($_, 'lsf');
+        #$server->schedule_job($_, 'fork');
+        $server->schedule_job_fake($_, 'fork');
     }
 }
 
