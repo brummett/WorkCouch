@@ -19,6 +19,8 @@ my $changes_watcher = AnyEvent->io(fh => $changes_fh, poll => 'r',
 my $done = AnyEvent->condvar;
 my $int_watcher = AnyEvent->signal(signal => 'INT', cb => sub{ $done->send });
 
+my $waiting_on_jobs = 100;
+
 # Initially, get the list of runnable jobs and run them
 &start_runnable_jobs();
 
@@ -39,16 +41,22 @@ sub clean_up_from_done_job {
     my $line = $server->_read_line_from_fh($fh);
     if (!$line) {
         # eof?
-        print "EOF on changes feed?!, exiting";
+        #print "EOF on changes feed?!, exiting";
         $fh->close();
         $changes_watcher->cancel();
         $done->send;
     }
+
+    $waiting_on_jobs--;
         
     my $data = $server->json_decode($line);
-    print "Got data: ",Data::Dumper::Dumper($data);
+    #print "Got data: ",Data::Dumper::Dumper($data);
 
     $server->remove_job_as_dependancy($data->{id});
 
     &start_runnable_jobs();
+
+    if ($waiting_on_jobs == 0) {
+        $done->send;
+    }
 }
