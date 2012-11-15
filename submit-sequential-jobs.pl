@@ -13,7 +13,8 @@ foreach my $i ( 1 .. $count ) {
         clusterId   => 1,
         queueId     => 'short',
         label       => 'sleep',
-        cmdline     => 'sleep 0',
+        cmdline     => '/bin/sleep 0',
+        #cmdline     => '/bin/echo hi',
         #depends     => $last_doc_id ? [$last_doc_id] : undef,
         waitingOn   => $last_doc_id ? 1 : 0,
     });

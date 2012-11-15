@@ -12,7 +12,7 @@ my $starting_id = $server->enqueue({
         clusterId   => 1,
         queueId     => 'short',
         label       => 'sleep',
-        cmdline     => 'sleep 0',
+        cmdline     => '/bin/sleep 0',
         #depends     => undef
         waitinOn    => 0,
     });
@@ -24,7 +24,7 @@ foreach my $i ( 1 .. $count ) {
         clusterId   => 1,
         queueId     => 'short',
         label       => 'sleep',
-        cmdline     => 'sleep 0',
+        cmdline     => '/bin/sleep 0',
         waitingOn   => 1,
     });
     push @middle_ids, $id;
@@ -38,7 +38,7 @@ my $ending_id = $server->enqueue({
         clusterId   => 1,
         queueId     => 'short',
         label       => 'sleep',
-        cmdline     => 'sleep 0',
+        cmdline     => '/bin/sleep 0',
         #waitingOn   => 98,
         waitingOn   => scalar(@middle_ids),
     });
