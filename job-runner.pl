@@ -5,6 +5,7 @@ use warnings;
 
 use lib '/gscuser/abrummet/newworkflow/task-based/lib';
 use WorkflowComms;
+use Time::HiRes;
 
 my $uri = 'http://linus146:5985/workflow';
 my $server = WorkflowComms->new($uri);
@@ -16,6 +17,7 @@ print STDERR "job runner for job $job_id\n";
 my $job = $server->_get_doc($job_id);
 my $command = $job->{'cmdline'};
 
+my $job_start_time = Time::HiRes::Time();
 my $pid = fork();
 if (defined($pid) && !$pid) {
     # child
@@ -33,6 +35,7 @@ if ($result ne 'success') {
 
 print STDERR "Job runner waiting for child $pid to exit\n";
 waitpid($pid, 0);
+my $job_wall_time = Time::HiRes::Time() - $job_start_time;
 my($user,$system,$cuser,$csystem) = times();
 
 my $exit_code = $? >> 8;
@@ -40,11 +43,15 @@ print STDERR "Job runner child $pid is done! exit code $exit_code\n";
 my $signal = $? & 127;
 my $coredump = $? & 128;
 
+my %stats = (   result => $exit_code,
+                cpuTime => ($cuser+$csystem),
+                wallTime => $job_wall_time );
+
 if ($exit_code) {
     # crashed!
-    $server->job_is_crashed($job_id, result => $exit_code, signal => $signal, coredump => $coredump, cpuTime => ($cuser+$csystem));
+    $server->job_is_crashed($job_id, %stats, signal => $signal, coredump => $coredump);
 } else {
-    $server->job_is_done($job_id, result => $exit_code);
+    $server->job_is_done($job_id, %stats);
 }
 
 
