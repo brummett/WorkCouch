@@ -10,7 +10,7 @@ use IO::Select;
 my $designDoc = '_design/workflow-scheduler';
 my $job_runner = '/gscuser/abrummet/newworkflow/task-based/job-runner.pl';
 
-$SIG{'CHLD'} = 'IGNORE';
+#$SIG{'CHLD'} = 'IGNORE';
 
 sub new {
     my $class = shift;
