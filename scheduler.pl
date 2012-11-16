@@ -7,6 +7,8 @@ use WorkflowComms;
 use AnyEvent;
 use Data::Dumper;
 
+my $DEBUG = 0;
+
 my $waiting_on_jobs = $ARGV[0] || 100;
 
 my $uri = 'http://localhost:5985/workflow';
@@ -32,6 +34,7 @@ $done->recv();
 sub start_runnable_jobs {
     my $ready_job_ids = $server->get_runnable_jobs();
     foreach ( @$ready_job_ids) {
+        print "Scheduling job $_\n" if ($DEBUG);
         #$server->schedule_job($_, 'fork');
         $server->schedule_job_fake($_, 'fork');
     }
