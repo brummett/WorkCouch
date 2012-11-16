@@ -1,5 +1,8 @@
 package WorkflowComms;
 
+use strict;
+use warnings;
+
 use LWP;
 use URI;
 use JSON;
@@ -32,6 +35,7 @@ sub _save_doc {
     my($self, $doc) = @_;
 
     my $method;
+    my $uri = $self->{'uri'};
     if ($doc->{_id}) {
         $method = 'PUT';
         $uri .= URI::Escape::uri_escape_utf8($doc->{_id});
@@ -39,12 +43,12 @@ sub _save_doc {
         $method = 'POST';
     }
 
-    my $req = HTTP::Request->new($method => $self->{'uri'});
+    my $req = HTTP::Request->new($method => $uri);
     $req->header('Content-Type', 'application/json');
 
     my $resp = $self->{'server'}->request($req);
 
-    my $resp_headers = $self->json_decode($res->content);
+    my $resp_headers = $self->json_decode($resp->content);
     $doc->{_id} = $resp_headers->{id};
     $doc->{_rev} = $resp_headers->{rev};
 
@@ -106,8 +110,7 @@ sub get_runnable_jobs {
     my $data = $self->json_decode($resp->content);
     return [] unless ($data && $data->{rows});
 
-    $ready_job_ids = [ map { $_->{id} } @{$data->{rows}} ];
-    return $ready_job_ids;
+    return [ map { $_->{id} } @{$data->{rows}} ];
 }
 
 sub schedule_job {
@@ -126,9 +129,7 @@ sub schedule_job {
     } elsif ($mechanism eq 'fork') {
         $queued_job_id = fork();
         if (defined($queued_job_id) && !$queued_job_id) {
-            exec($job_runner,$job_id);
-            print "exec failed! $!\n";
-            exit(1);
+            exec($job_runner,$job_id) || die "exec failed: $!";
         }
     }
 
@@ -157,7 +158,7 @@ sub signalChildren {
     # retrieving the whole doc?
     if (!ref($job)) {
         # it's a job id - get the doc
-        $job = $self->_get_doc($job_id);
+        $job = $self->_get_doc($job);
     }
 
     my $base_uri = join('/', $self->{'uri'}, $designDoc, '_update', 'parentIsDone/');
@@ -218,6 +219,7 @@ sub job_is_done {
     my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'done', $job_id);
     my @params;
     foreach my $key ( 'cpuTime', 'result', 'maxMem' ) {
+        next unless exists($params{$key});
         my $val = $params{$key};
         push @params, "$key=$val";
     }
