@@ -149,7 +149,9 @@ sub schedule_job_fake {
 }
 
 
-
+# job is a completed parent job doc or job id
+# iterates over the dependants list and tells them to decrement
+# their waiting-on counter
 sub signalChildren {
     my($self, $job) = @_;
 
@@ -174,6 +176,30 @@ sub signalChildren {
                 # somethiong else went wrong, rethrow the exception
                 die $@;
             }
+        }
+    }
+}
+
+
+# job_id is a child job - tell it to decrement its waiting-on counter
+sub signalChildJob {
+    my($self, $job_id) = @_;
+
+    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'parentIsDone', $job_id);
+    my $req = HTTP::Request->new(PUT => $uri);
+    while(1) {
+        my $resp = eval { $self->{'server'}->request($req) };
+        if ($@) {
+            if ($@ =~ m/409/) {
+                # update conflict, try again
+                redo;
+            } else {
+                # somethiong else went wrong, rethrow the exception
+                die $@;
+            }
+        } else {
+            #no exception, we're done
+            last;
         }
     }
 }
@@ -340,6 +366,26 @@ sub _read_line_from_fh {
         }
     }
     return $line;
+}
+
+sub read_all_lines_from_fh {
+    my($self,$fh) = @_;
+
+    my $data = '';
+    my $datalen = 0;
+
+    while(1) {
+        my $read = $fh->sysread($data, 4096, length($data));
+        last if ($data =~ m/\n$/);
+        die "read 0 bytes from fh: $!" if (! $read);
+        $datalen += $read;
+    }
+
+    if ($data !~ m/\n$/) {
+        die "Read a partial line: >>>$data<<<\n";
+    }
+
+    return $data;
 }
 
 

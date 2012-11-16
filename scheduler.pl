@@ -20,6 +20,13 @@ my $changes_fh = $server->changes_for_scheduler($last_seq);
 my $changes_watcher = AnyEvent->io(fh => $changes_fh, poll => 'r',
                                     cb => sub { message_from_db($changes_fh) });
 
+my @children_to_signal;
+my $child_signal_watcher = AnyEvent->idle(cb => sub {
+        if (@children_to_signal) {
+            $server->signalChildJob(shift @children_to_signal);
+        }
+});
+
 my $done = AnyEvent->condvar;
 my $int_watcher = AnyEvent->signal(signal => 'INT', cb => sub{ $done->send });
 
@@ -43,34 +50,58 @@ sub start_runnable_jobs {
 sub message_from_db {
     my $fh = shift;
 
-    my $line = $server->_read_line_from_fh($fh);
-        if (!$line) {
-        # eof?
-        #print "EOF on changes feed?!, exiting";
-        $fh->close();
-        $changes_watcher->cancel();
-        $done->send;
-        return;
-    }
+    #my $line = $server->_read_line_from_fh($fh);
+    #    if (!$line) {
+    #    # eof?
+    #    print STDERR "EOF on changes feed?!, exiting";
+    #    $fh->close();
+    #    $changes_watcher->cancel();
+    #    $done->send;
+    #    return;
+    #}
 
-    my $data = $server->json_decode($line);
-#print "Got message from DB: ".Data::Dumper::Dumper($data);
+    print "Reading from changes feed...\n" if ($DEBUG);
+    my @lines = split(/\n/, $server->read_all_lines_from_fh($fh));
+    foreach my $line ( @lines ) {
 
-    my $doc = $data->{'doc'};
-    if ($doc->{'status'} eq 'done') {
-        # a job is finished - decrement its dependants waitingOn
-        $server->signalChildren($doc);
-        $waiting_on_jobs--;
+        my $data = eval { $server->json_decode($line) };
+        if ($@) {
+            die "Couldn't parse json message: >>>$line<<<\n";
+        }
+        print "Got message from DB: ".Data::Dumper::Dumper($data) if ($DEBUG);
 
-    } elsif (($doc->{'status'} eq 'waiting') and ($doc->{'waitingOn'} == 0)) {
-        # A job is now ready to run
-        $server->schedule_job_fake($doc->{'_id'});
-    } else {
-        die "Unknown doc received from changes: ".Data::Dumper::Dumper($doc);
-    }
+        my $doc = $data->{'doc'};
+        if ($doc->{'status'} eq 'done') {
+            # a job is finished - decrement its dependants waitingOn
+            #$server->signalChildren($doc);
+            if ($doc->{'dependants'}) {
+                print "Telling ".scalar(@{$doc->{'dependants'}})." child jobs to dec counter\n" if ($DEBUG);
+                push @children_to_signal, @{$doc->{'dependants'}};
+                #foreach my $child_job_id ( @{$doc->{'dependants'}} ) {
+                    #$w = AnyEvent->timer(after => 0.00001, cb => sub {
+                    #$w = AnyEvent->idle(cb => sub {
+                    #    print "Telling job $child_job_id to dec counter\n" if ($DEBUG);
+                    #    $server->signalChildJob($child_job_id);
+                    #    $w->cancel();
+                    #    $w = undef;
+                    #});
+                    #print "Watcher is $w\n";
+                #}
+            }
+            $waiting_on_jobs--;
 
-    if ($waiting_on_jobs == 0) {
-        $done->send;
+        } elsif (($doc->{'status'} eq 'waiting') and ($doc->{'waitingOn'} == 0)) {
+            # A job is now ready to run
+            print "Scheduling job ".$doc->{_id}."\n" if ($DEBUG);
+            #$server->schedule_job($doc->{'_id'}, 'fork');
+            $server->schedule_job_fake($doc->{'_id'}, 'fork');
+        } else {
+            die "Unknown doc received from changes: ".Data::Dumper::Dumper($doc);
+        }
+
+        if ($waiting_on_jobs == 0) {
+            $done->send;
+        }
     }
 }
 
