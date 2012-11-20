@@ -271,5 +271,13 @@ sub current_update_seq {
     return $data->{'update_seq'};
 }
     
+sub number_of_docs_in_db {
+    my $self = shift;
+    my $uri = join('/', $self->{'uri'}, '_all_docs?key="{}"');  #purposefully matches nothing
+    my $req = HTTP::Request->new(GET => $uri);
+    my $resp = $self->{server}->request($req);
+    my $data = $self->json_decode($resp->content);
+    return $data->{total_rows};
+}
 
 1;

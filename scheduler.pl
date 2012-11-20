@@ -9,10 +9,15 @@ use Data::Dumper;
 
 my $DEBUG = 0;
 
-my $waiting_on_jobs = $ARGV[0] || 100;
-
 my $uri = 'http://localhost:5985/workflow';
 my $server = WorkflowComms->new($uri);
+
+my $waiting_on_jobs = $ARGV[0];
+unless ($waiting_on_jobs) {
+    # assumme it's the total number of docs - 1 (for the design doc)
+    $waiting_on_jobs = $server->number_of_docs_in_db() - 1;
+    print "Waiting on $waiting_on_jobs jobs to finish...\n";
+}
 
 my $last_seq = $server->current_update_seq();
 
