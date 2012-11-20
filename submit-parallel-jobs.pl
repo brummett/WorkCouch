@@ -6,6 +6,8 @@ use warnings;
 use JSON;
 use WorkflowComms;
 
+my $parallel_max = 25;
+
 my $count = $ARGV[0] - 2;  # subtract the starting and ending nodes
 
 my $server = WorkflowComms->new('http://localhost:5985/workflow/');
@@ -21,16 +23,23 @@ my $starting_node = {
     };
 
 my @jobs = map { '/bin/sleep 0' } ( 1 .. $count );
-my $parallel_node = {
-    workflowId  => 1,
-    clusterId   => 1,
-    queueId     => 'short',
-    label       => 'parallel',
-    isParallel  => JSON::true,
-    cmdline     => \@jobs,
-    dependants  => [],
-    waitingOn   => 1,
-};
+
+my @middle_nodes;
+while(@jobs) {
+    my @par_jobs = splice(@jobs, 0,$parallel_max);
+
+    my $parallel_node = {
+        workflowId  => 1,
+        clusterId   => 1,
+        queueId     => 'short',
+        label       => 'parallel',
+        isParallel  => JSON::true,
+        cmdline     => \@par_jobs,
+        dependants  => [],
+        waitingOn   => 1,
+    };
+    push @middle_nodes, $parallel_node;
+}
 
 
 # and an ending node
@@ -40,11 +49,16 @@ my $ending_id = $server->enqueue({
         queueId     => 'short',
         label       => 'end',
         cmdline     => '/bin/sleep 0',
-        waitingOn   => 1,
+        waitingOn   => scalar(@middle_nodes),
     });
 
-$parallel_node->{'dependants'} = [ $ending_id ];
-my $parallel_id = $server->enqueue($parallel_node);
+my @middle_ids;
+# submid the middle nodes
+foreach (@middle_nodes) {
+    $_->{'dependants'} = [ $ending_id ];
+    my $parallel_id = $server->enqueue($_);
+    push @middle_ids, $parallel_id;
+}
 
-$starting_node->{'dependants'} = [ $parallel_id ];
+$starting_node->{'dependants'} = \@middle_ids;
 $server->enqueue($starting_node);
