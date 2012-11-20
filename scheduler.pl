@@ -7,10 +7,12 @@ use WorkflowComms;
 use AnyEvent;
 use Data::Dumper;
 
-my $DEBUG = 0;
+my $DEBUG = 1;
 
-my $uri = 'http://localhost:5985/workflow';
-my $server = WorkflowComms->new($uri);
+my @uri = ( 'http://localhost:5985/workflow',
+            'http://linus222:5985/workflow',
+         );
+my $server = WorkflowComms->new(@uri);
 
 my $waiting_on_jobs = $ARGV[0];
 unless ($waiting_on_jobs) {
@@ -48,7 +50,7 @@ sub start_runnable_jobs {
     foreach ( @$ready_job_ids) {
         print "Scheduling job $_\n" if ($DEBUG);
         #$server->schedule_job($_, 'fork');
-        $server->schedule_job_fake($_, 'fork');
+        $server->schedule_job_fake($_, 'fake');
     }
 }
 
@@ -69,6 +71,7 @@ sub message_from_db {
         if ($doc->{'status'} eq 'done') {
             # a job is finished - decrement its dependants waitingOn
             #$server->signalChildren($doc);
+            print "job ".$doc->{_id}." is done\n" if ($DEBUG);
             if ($doc->{'dependants'}) {
                 print "Telling ".scalar(@{$doc->{'dependants'}})." child jobs to dec counter\n" if ($DEBUG);
                 push @children_to_signal, @{$doc->{'dependants'}};
@@ -79,7 +82,7 @@ sub message_from_db {
             # A job is now ready to run
             print "Scheduling job ".$doc->{_id}."\n" if ($DEBUG);
             #$server->schedule_job($doc->{'_id'}, 'fork');
-            $server->schedule_job_fake($doc, 'fork');
+            $server->schedule_job_fake($doc, 'fake');
         } else {
             die "Unknown doc received from changes: ".Data::Dumper::Dumper($doc);
         }

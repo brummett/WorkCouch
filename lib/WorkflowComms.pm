@@ -15,39 +15,54 @@ my $job_runner = '/gscuser/abrummet/newworkflow/task-based/job-runner.pl';
 
 sub new {
     my $class = shift;
-    my $uri = shift;
-
+    
     my $self = bless {}, $class;
     $self->{'json'} = JSON->new->utf8;
-    $self->{'server'} = LWP::UserAgent->new();
-    $self->{'uri'} = $uri;
+    $self->{connections} = [];
 
-    my $uriobj = URI->new($uri);
-    $self->{'host'} = $uriobj->host_port;
+    foreach my $uri ( @_ ) {
+        my $server = LWP::UserAgent->new();
+        my $uriobj = URI->new($uri);
+        my $host = $uriobj->host_port;
+        push @{$self->{connections}},
+                {   server  => $server,
+                    uri     => $uri,
+                    host    => $host };
+    }
 
     return $self;
+}
+
+# pick a connection at random
+sub _connection  {
+    my $self = shift;
+    my $connection = $self->{connections}->[ int(rand( @{$self->{connections}} )) ];
+    print "Sending to ".$connection->{host}."\n";
+    return $connection;
 }
 
 sub _get_doc {
     my($self, $id) = @_;
 
-    my $uri = join('/', $self->{'uri'}, $id);
+    my $conn = $self->_connection;
+    my $uri = join('/', $conn->{'uri'}, $id);
     my $req = HTTP::Request->new(GET => $uri);
     $req->header('Content-Type', 'application/json');
 
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
     return eval { $self->json_decode($resp->content) };
 }
 
 sub enqueue {
     my($self, $job) = @_;
 
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'enqueue');
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'enqueue');
     my $req = HTTP::Request->new(POST => $uri);
     $req->header('Content-Type', 'application/json');
     $req->content($self->{'json'}->encode($job));
 
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
 
     if ($resp->content =~ m/success: (\w+)/) {
         return $1;
@@ -59,11 +74,12 @@ sub enqueue {
 sub get_runnable_jobs {
     my $self = shift;
 
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_view', 'runnable');
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_view', 'runnable');
     my $req = HTTP::Request->new(GET => $uri);
     $req->header('Content-Type', 'application/json');
 
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
 
     my $data = $self->json_decode($resp->content);
     return [] unless ($data && $data->{rows});
@@ -79,6 +95,7 @@ sub schedule_job {
     }
     return unless $job;
 
+    my $job_id = $job->{_id};
     my $queued_job_id;
     if ($mechanism eq 'lsf') {
         my $queue = $job->{'queueId'};
@@ -97,11 +114,14 @@ sub schedule_job {
 }
 
 sub schedule_job_fake {
-    my($self, $job_id, $mechanism) = @_;
+    my($self, $job, $mechanism) = @_;
 
-    my $job = $self->_get_doc($job_id);
+    if (! ref($job)) {
+        $job = $self->_get_doc($job);
+    }
     return unless $job;
 
+    my $job_id = $job->{_id};
     my $queued_job_id = 'fake';
     $self->job_is_queued($job_id, $queued_job_id);
     $self->job_is_running($job_id, $$);
@@ -113,10 +133,11 @@ sub schedule_job_fake {
 sub signalChildJob {
     my($self, $job_id) = @_;
 
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'parentIsDone', $job_id);
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'parentIsDone', $job_id);
     my $req = HTTP::Request->new(PUT => $uri);
     while(1) {
-        my $resp = eval { $self->{'server'}->request($req) };
+        my $resp = eval { $conn->{'server'}->request($req) };
         if ($@) {
             if ($@ =~ m/409/) {
                 # update conflict, try again
@@ -135,10 +156,11 @@ sub signalChildJob {
 sub add_dependant {
     my($self, $parent_job_id, $dep_job_id) = @_;
 
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'addDependant', $parent_job_id);
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'addDependant', $parent_job_id);
     $uri .= "?jobId=$dep_job_id";
     my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
@@ -146,10 +168,11 @@ sub add_dependant {
 
 sub job_is_queued {
     my($self,$job_id, $queued_job_id) = @_;
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'scheduled', $job_id);
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'scheduled', $job_id);
     $uri .= "?queueId=$queued_job_id";
     my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
@@ -157,11 +180,12 @@ sub job_is_queued {
 sub job_is_running {
     my($self,$job_id, $pid) = @_;
 
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'running', $job_id);
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'running', $job_id);
     $uri .= "?pid=$pid";
 
     my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
@@ -169,7 +193,8 @@ sub job_is_running {
 sub job_is_done {
     my($self, $job_id, %params) = @_;
 
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'done', $job_id);
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'done', $job_id);
     my @params;
     foreach my $key ( 'cpuTime', 'result', 'maxMem' ) {
         next unless exists($params{$key});
@@ -179,14 +204,15 @@ sub job_is_done {
     $uri .= '?' . join('&', @params);
 
     my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
 sub job_is_crashed {
     my($self, $job_id, %params) = @_;
 
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'done', $job_id);
+    my $conn = $self->_connection();
+    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'done', $job_id);
     my @params;
     foreach my $key ( 'cpuTime', 'result', 'maxMem', 'signal', 'coredump' ) {
         my $val = $params{$key};
@@ -195,7 +221,7 @@ sub job_is_crashed {
     $uri .= '?' . join('&', @params);
 
     my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $self->{'server'}->request($req);
+    my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
@@ -204,15 +230,16 @@ sub changes_for_scheduler {
     my $self = shift;
     my $since = shift;
 
+    my $conn = $self->{connections}->[0];  # use the first one for changes
     my $design_doc_name = (split('/',$designDoc))[1];
     my $filter_name = $design_doc_name . '/readyToRun';
-    my $uri = join('/', $self->{'uri'}, "_changes?feed=continuous&filter=$filter_name&include_docs=true");
+    my $uri = join('/', $conn->{'uri'}, "_changes?feed=continuous&filter=$filter_name&include_docs=true");
     if ($since) {
         $uri .= "&since=$since";
     }
     my $request = HTTP::Request->new(GET => $uri);
 
-    my $fh = IO::Socket::INET->new($self->{'host'});
+    my $fh = IO::Socket::INET->new($conn->{'host'});
     $fh->print($request->as_string);
 
     # read in the whole response
@@ -266,8 +293,9 @@ sub read_all_lines_from_fh {
 
 sub current_update_seq {
     my $self = shift;
-    my $req = HTTP::Request->new(GET => $self->{'uri'});
-    my $resp = $self->{'server'}->request($req);
+    my $conn = $self->{connections}->[0];  # use the master connection
+    my $req = HTTP::Request->new(GET => $conn->{'uri'});
+    my $resp = $conn->{'server'}->request($req);
 
     my $data = $self->json_decode($resp->content);
     return $data->{'update_seq'};
@@ -275,9 +303,10 @@ sub current_update_seq {
     
 sub number_of_docs_in_db {
     my $self = shift;
-    my $uri = join('/', $self->{'uri'}, '_all_docs?key="{}"');  #purposefully matches nothing
+    my $conn = $self->{connections}->[0];  # use the master connection
+    my $uri = join('/', $conn->{'uri'}, '_all_docs?key="{}"');  #purposefully matches nothing
     my $req = HTTP::Request->new(GET => $uri);
-    my $resp = $self->{server}->request($req);
+    my $resp = $conn->{server}->request($req);
     my $data = $self->json_decode($resp->content);
     return $data->{total_rows};
 }
