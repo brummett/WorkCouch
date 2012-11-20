@@ -80,7 +80,7 @@ sub schedule_job {
     return unless $job;
 
     if ($job->{isParallel}) {
-        print "Job is parallel ".scalar(@{$job->{cmdline}})."\n" if ($main::main::DEBUG);
+        print "Job is parallel ".scalar(@{$job->{cmdline}})."\n" if ($main::DEBUG);
         for (my $i = 0; $i < @{$job->{cmdline}}; $i++) {
             $self->_schedule_single_job($job, $i, $mechanism);
         }
