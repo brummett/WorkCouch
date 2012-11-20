@@ -7,12 +7,14 @@ my @uri = ( 'http://localhost:5985/workflow',
           );
 
 
-foreach ( @uri ) {
+for (my $i = 0; $i < @uri; $i++) {
+    my $uri = $uri[$i];
+
     my $server = LWP::UserAgent->new();
-    my $req = HTTP::Request->new(DELETE => $_);
+    my $req = HTTP::Request->new(DELETE => $uri);
     my $resp = $server->request($req);
 
-    $req = HTTP::Request->new(PUT => $_);
+    $req = HTTP::Request->new(PUT => $uri);
     $resp = $server->request($req);
 }
 
