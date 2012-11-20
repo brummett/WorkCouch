@@ -2,14 +2,18 @@
 
 use LWP;
 
-my $uri = 'http://localhost:5985/workflow';
-
-my $server = LWP::UserAgent->new();
-my $req = HTTP::Request->new(DELETE => $uri);
-my $resp = $server->request($req);
+my @uri = ( 'http://localhost:5985/workflow',
+            'http://linus222:5985/workflow',
+          );
 
 
-$req = HTTP::Request->new(PUT => $uri);
-$resp = $server->request($req);
+foreach ( @uri ) {
+    my $server = LWP::UserAgent->new();
+    my $req = HTTP::Request->new(DELETE => $_);
+    my $resp = $server->request($req);
+
+    $req = HTTP::Request->new(PUT => $_);
+    $resp = $server->request($req);
+}
 
 
