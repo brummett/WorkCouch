@@ -72,11 +72,6 @@ ddoc.updates.enqueue = function(doc,req) {
         doc.cpuTimes = [];
         doc.maxMems = [];
     }
-    //if ('depends' in req.query) {
-    //    doc.depends     = [ req.query.depends ];
-    //} else if ('depends' in req.form) {
-    //    doc.depends     = req.form.depends;
-    //}
 
     if ('id' in req.query) {
         doc._id = req.query.id;

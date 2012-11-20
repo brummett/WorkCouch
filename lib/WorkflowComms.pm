@@ -72,9 +72,12 @@ sub get_runnable_jobs {
 }
 
 sub schedule_job {
-    my($self, $job_id, $mechanism) = @_;
+    my($self, $job, $mechanism) = @_;
 
-    my $job = $self->_get_doc($job_id);
+    if (! ref($job)) {
+        $job = $self->_get_doc($job);
+    }
+    return unless $job;
 
     if ($job->{isParallel}) {
         print "Job is parallel ".scalar(@{$job->{cmdline}})."\n" if ($main::main::DEBUG);
@@ -303,5 +306,13 @@ sub current_update_seq {
     return $data->{'update_seq'};
 }
     
+sub number_of_docs_in_db {
+    my $self = shift;
+    my $uri = join('/', $self->{'uri'}, '_all_docs?key="{}"');  #purposefully matches nothing
+    my $req = HTTP::Request->new(GET => $uri);
+    my $resp = $self->{server}->request($req);
+    my $data = $self->json_decode($resp->content);
+    return $data->{total_rows};
+}
 
 1;

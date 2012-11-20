@@ -9,10 +9,15 @@ use Data::Dumper;
 
 our $DEBUG = 0;
 
-my $waiting_on_jobs = $ARGV[0] || 100;
-
 my $uri = 'http://localhost:5985/workflow';
 my $server = WorkflowComms->new($uri);
+
+my $waiting_on_jobs = $ARGV[0];
+unless ($waiting_on_jobs) {
+    # assumme it's the total number of docs - 1 (for the design doc)
+    $waiting_on_jobs = $server->number_of_docs_in_db() - 1;
+    print "Waiting on $waiting_on_jobs jobs to finish...\n";
+}
 
 my $last_seq = $server->current_update_seq();
 
@@ -73,7 +78,7 @@ sub message_from_db {
             # A job is now ready to run
             print "Scheduling job ".$doc->{_id}."\n" if ($DEBUG);
             #$server->schedule_job($doc->{'_id'}, 'fork');
-            $server->schedule_job($doc->{'_id'}, 'null');
+            $server->schedule_job_fake($doc, 'null');
         } else {
             die "Unknown doc received from changes: ".Data::Dumper::Dumper($doc);
         }
