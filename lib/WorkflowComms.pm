@@ -75,35 +75,44 @@ sub schedule_job {
     my($self, $job_id, $mechanism) = @_;
 
     my $job = $self->_get_doc($job_id);
-    return unless $job;
 
+    if ($job->{isParallel}) {
+        print "Job is parallel ".scalar(@{$job->{cmdline}})."\n" if ($main::main::DEBUG);
+        for (my $i = 0; $i < @{$job->{cmdline}}; $i++) {
+            $self->_schedule_single_job($job, $i, $mechanism);
+        }
+    } else {
+        $self->_schedule_single_job($job, undef, $mechanism);
+    }
+}
+
+sub _schedule_single_job {
+    my($self, $job, $i, $mechanism) = @_;
+
+    my $job_id = $job->{_id};
     my $queued_job_id;
     if ($mechanism eq 'lsf') {
         my $queue = $job->{'queueId'};
-        my $output = `bsub -B -N -q $queue $job_runner $job_id`;
+        my $cmdline = "$job_runner $job_id" . ( defined($i) ? " $i" : '');
+        my $output = `bsub -B -N -q $queue $cmdline`;
         # Job <4791315> is submitted to queue <short>.
         ($queued_job_id) = ($output =~ m/Job \<(\d+)\> is/);
 
     } elsif ($mechanism eq 'fork') {
         $queued_job_id = fork();
         if (defined($queued_job_id) && !$queued_job_id) {
-            exec($job_runner,$job_id) || die "exec failed: $!";
+            exec($job_runner,$job_id, (defined($i) ? $i : () ) ) || die "exec failed: $!";
         }
+    } elsif ($mechanism eq 'null') {
+        $queued_job_id = 'fake';
     }
 
-    $self->job_is_queued($job_id, $queued_job_id);
-}
+    $self->job_is_scheduled($job_id, $i, $queued_job_id);
 
-sub schedule_job_fake {
-    my($self, $job_id, $mechanism) = @_;
-
-    my $job = $self->_get_doc($job_id);
-    return unless $job;
-
-    my $queued_job_id = 'fake';
-    $self->job_is_queued($job_id, $queued_job_id);
-    $self->job_is_running($job_id, $$);
-    $self->job_is_done($job_id, result => 0);
+    if ($mechanism eq 'null') {
+        $self->job_is_running($job_id, $i, $$);
+        $self->job_is_done($job_id, $i, result => 0);
+    }
 }
 
 
@@ -142,10 +151,18 @@ sub add_dependant {
 
     
 
-sub job_is_queued {
-    my($self,$job_id, $queued_job_id) = @_;
+sub job_is_scheduled {
+    my($self,$job_id, $i, $queued_job_id) = @_;
     my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'scheduled', $job_id);
     $uri .= "?queueId=$queued_job_id";
+    $uri .= "&i=$i" if (defined $i);
+
+    if ($main::DEBUG) {
+        print "Job $job_id ";
+        print " with index $i" if (defined $i);
+        print " scheduled with queue id $queued_job_id\n";
+    }
+
     my $req = HTTP::Request->new(PUT => $uri);
     my $resp = $self->{'server'}->request($req);
     return $resp->content;
@@ -153,11 +170,18 @@ sub job_is_queued {
 
 
 sub job_is_running {
-    my($self,$job_id, $pid) = @_;
+    my($self,$job_id, $i, $pid) = @_;
 
     my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'running', $job_id);
     $uri .= "?pid=$pid";
+    $uri .= "&i=$i" if (defined $i);
 
+    if ($main::DEBUG) {
+        print "Job $job_id ";
+        print " with index $i" if (defined $i);
+        print " running with pid $pid\n";
+    }
+        
     my $req = HTTP::Request->new(PUT => $uri);
     my $resp = $self->{'server'}->request($req);
     return $resp->content;
@@ -165,7 +189,7 @@ sub job_is_running {
 
 
 sub job_is_done {
-    my($self, $job_id, %params) = @_;
+    my($self, $job_id, $i, %params) = @_;
 
     my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'done', $job_id);
     my @params;
@@ -175,6 +199,13 @@ sub job_is_done {
         push @params, "$key=$val";
     }
     $uri .= '?' . join('&', @params);
+    $uri .= "&i=$i" if (defined $i);
+
+    if ($main::DEBUG) {
+        print "Job $job_id ";
+        print " with index $i" if (defined $i);
+        print " done with result ".$params{result}."\n";
+    }
 
     my $req = HTTP::Request->new(PUT => $uri);
     my $resp = $self->{'server'}->request($req);
@@ -182,7 +213,7 @@ sub job_is_done {
 }
 
 sub job_is_crashed {
-    my($self, $job_id, %params) = @_;
+    my($self, $job_id, $i, %params) = @_;
 
     my $uri = join('/', $self->{'uri'}, $designDoc, '_update', 'done', $job_id);
     my @params;
@@ -191,6 +222,7 @@ sub job_is_crashed {
         push @params, "$key=$val";
     }
     $uri .= '?' . join('&', @params);
+    $uri .= "&i=$i" if (defined $i);
 
     my $req = HTTP::Request->new(PUT => $uri);
     my $resp = $self->{'server'}->request($req);

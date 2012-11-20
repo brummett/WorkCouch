@@ -11,11 +11,15 @@ my $uri = 'http://linus146:5985/workflow';
 my $server = WorkflowComms->new($uri);
 
 my $job_id = $ARGV[0];
+my $i = $ARGV[1];
 
 #print STDERR "job runner for job $job_id\n";
 
 my $job = $server->_get_doc($job_id);
 my $command = $job->{'cmdline'};
+if (defined $i) {
+    $command = $job->{'cmdline'}->[$i];
+}
 
 my $job_start_time = Time::HiRes::time();
 my $pid = fork();
@@ -29,7 +33,7 @@ if (defined($pid) && !$pid) {
 # parent
 #print STDERR "Job runner child pid is $pid\n";
 
-my $result = $server->job_is_running($job_id, $pid);
+my $result = $server->job_is_running($job_id, $i, $pid);
 if ($result ne 'success') {
     die "Couldn't set job $job_id running: $result";
 }
@@ -54,10 +58,10 @@ my %stats = (   result => $exit_code,
 if ($exit_code) {
     # crashed!
 #print STDERR "Jobs crashed!\n";
-    $server->job_is_crashed($job_id, %stats, signal => $signal, coredump => $coredump);
+    $server->job_is_crashed($job_id, $i, %stats, signal => $signal, coredump => $coredump);
 } else {
 #print STDERR "Job is done!\n";
-    $server->job_is_done($job_id, %stats);
+    $server->job_is_done($job_id, $i, %stats);
 }
 
 

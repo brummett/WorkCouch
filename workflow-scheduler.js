@@ -43,15 +43,35 @@ ddoc.updates.enqueue = function(doc,req) {
         return [null, 'error: Cannot enqueue an already existing job'];
     }
 
+    var cmdline     = req.query.cmdline || req.form.cmdline,
+        isParallel  = Object.prototype.toString.call(cmdline) === '[object Array]';
+
     doc = {};
     doc.workflowId  = req.query.workflowId || req.form.workflowId;
     doc.clusterId   = req.query.clusterId || req.form.clusterId;
     doc.queueId     = req.query.queueId || req.form.queueId;
     doc.label       = req.query.label || req.form.label;
-    doc.cmdline     = req.query.cmdline || req.form.cmdline;
+    doc.cmdline     = cmdline;
+    doc.dependants  = ( req.query.dependant ? [ req.query.dependant ] : req.form.dependants );
     doc.waitingOn   = parseInt(req.query.waitingOn) || parseInt(req.form.waitingOn) || 0;
+    doc.isParallel  = isParallel;
     doc.submitTime  = Date.now();  // milliseconds
 
+    if (isParallel) {
+        doc.parallelCount = cmdline.length;
+        doc.statuses = [];
+        doc.scheduleTime = [];
+        doc.startTime = [];
+        doc.pids = [];
+        doc.doneTimes = [];
+        doc.queueIds = [];
+        doc.hostnames = [];
+        doc.results = [];
+        doc.signals = [];
+        doc.coredumps = []
+        doc.cpuTimes = [];
+        doc.maxMems = [];
+    }
     //if ('depends' in req.query) {
     //    doc.depends     = [ req.query.depends ];
     //} else if ('depends' in req.form) {
@@ -88,12 +108,33 @@ ddoc.updates.scheduled = function(doc,req) {
         return [null, 'error: Job status is not "waiting"'];
     }
 
-    doc.status = 'scheduled';
-    doc.scheduleTime = Date.now();
-    doc.queueId = req.query.queueId || req.form.queueId;
+    if (doc.isParallel && (! ( 'i' in req.query))) {
+        return [ null, "error: 'i' is a required parameter for isParallel nodes"];
+    }
+
+    var queueId = req.query.queueId || req.form.queueId;
+
+    if (doc.isParallel) {
+        var i = req.query.i;
+        if (i === undefined) {
+            return [ null, "error: 'i' is a required parameter for isParallel nodes"];
+        } else {
+            if (doc.status === 'waiting') {
+                doc.status = 'scheduled';
+            }
+            doc.statuses[i] = 'scheduled';
+            doc.scheduleTime[i] = Date.now();
+            doc.queueId[i] = queueId;
+        }
+
+    } else {
+        doc.status = 'scheduled';
+        doc.scheduleTime = Date.now();
+        doc.queueId = queueId;
+    }
+
     return [doc, 'success'];
 }
-
 // Mark that a job is being worked on
 // Accepts params:
 //      hostname    -   hostname it's running on, default is req.peer
@@ -105,10 +146,29 @@ ddoc.updates.running = function(doc,req) {
         return [null, 'error: Job status is not "scheduled"'];
     }
 
-    doc.status = 'running';
-    doc.startTime = Date.now();
-    doc.hostname = req.query.hostname || req.form.hostname || req.peer;
-    doc.pid = req.query.pid || req.form.pid;
+    var startTime   = Date.now(),
+        hostname    = req.query.hostname || req.form.hostname || req.peer;
+        pid         = req.query.pid || req.form.pid;
+    
+    if (doc.isParallel) {
+        var i = req.query.i;
+        if (i === undefined) {
+            return [ null, "error: 'i' is a required parameter for isParallel nodes"];
+        } else {
+            if (doc.status === 'scheduled') {
+                doc.status = 'running';
+            }
+            doc.statuses[i] = 'running';
+            doc.startTime[i] = startTime;
+            doc.hostnames[i] = hostname;
+            doc.pids[i] = pid;
+        }
+
+    } else {
+        doc.status = 'running';
+        doc.startTime = startTime;
+        doc.pid = pid;
+    }
     return [doc, 'success'];
 };
 
@@ -124,11 +184,36 @@ ddoc.updates.done = function(doc,req) {
         return [null, 'error: Job status is not "running"'];
     }
 
-    doc.status = 'done';
-    doc.doneTime = Date.now();
-    doc.result = req.query.result || req.form.result;
-    doc.cpuTime = parseFloat(req.query.cpuTime || req.form.cpuTime || 0);
-    doc.maxMem = parseInt(req.query.maxMem || req.form.maxMem || 0);
+    var doneTime = Date.now(),
+        result = req.query.result || req.form.result,
+        signal = req.query.signal || req.form.signal,
+        cpuTime = parseFloat(req.query.cpuTime || req.form.cpuTime || 0),
+        maxMem = parseInt(req.query.maxMem || req.form.maxMem || 0);
+
+    if (doc.isParallel) {
+        var i = req.query.i;
+        if (i === undefined) {
+            return [ null, "error: 'i' is a required parameter for isParallel nodes"];
+        } else {
+            doc.statuses[i] = 'done';
+            doc.doneTimes[i] = doneTime;
+            doc.results[i] = result;
+            doc.cpuTimes[i] = cpuTime;
+            doc.maxMems[i] = maxMem;
+            doc.parallelCount--;
+
+            if ((doc.parallelCount === 0) && (doc.status === 'running')) {
+                doc.status = 'done';
+            }
+        }
+
+    } else {
+        doc.status = 'done';
+        doc.doneTime = Date.now();
+        doc.result = req.query.result || req.form.result;
+        doc.cpuTime = parseFloat(req.query.cpuTime || req.form.cpuTime || 0);
+        doc.maxMem = parseInt(req.query.maxMem || req.form.maxMem || 0);
+    }
     return [doc, 'success'];
 };
 
@@ -146,17 +231,44 @@ ddoc.updates.crashed = function(doc,req) {
         return [null, 'error: Job status is not "running"'];
     }
 
-    doc.status = 'crashed';
-    doc.doneTime = Date.now();
-    doc.result = req.query.result || req.form.result;
-    doc.signal = req.query.signal || req.form.signal;
-    doc.cpuTime = parseFloat(req.query.cpuTime || req.form.cpuTime || 0);
-    doc.maxMem = parseInt(req.query.maxMem || req.form.maxMem || 0);
+    
+    var doneTime = Date.now(),
+        result = req.query.result || req.form.result,
+        signal = req.query.signal || req.form.signal,
+        cpuTime = parseFloat(req.query.cpuTime || req.form.cpuTime || 0),
+        maxMem = parseInt(req.query.maxMem || req.form.maxMem || 0),
+        coredump;
+
     if ('coredump' in req.query) {
-        doc.coredump = req.query.coredump ? true : false;
+        coredump = req.query.coredump ? true : false;
     } else if ('coredump' in req.form) {
-        doc.coredump = req.form.coredump ? true : false;
+        coredump = req.form.coredump ? true : false;
     }
+
+    doc.status = 'crashed';
+    if (doc.isParallel) {
+        var i = req.query.i;
+        if (i === undefined) {
+            return [ null, "error: 'i' is a required parameter for isParallel nodes"];
+        } else {
+            doc.statuses[i] = 'crashed';
+            doc.results[i] = result;
+            doc.signals[i] = signal;
+            doc.cpuTimes[i] = cpuTime;
+            doc.maxMems[i] = maxMem;
+            doc.coredumps[i] = coredump;
+            doc.parallelCount--;
+        }
+
+    } else {
+        doc.status = status;
+        doc.result = result;
+        doc.signal = signal;
+        doc.cpuTime = cpuTime;
+        doc.maxMem = maxMem;
+        doc.coredump = coredump;
+    }
+
     return [doc,'success'];
 };
 
@@ -183,6 +295,8 @@ ddoc.updates.addDependant = function(doc,req) {
 }
 
 // Return all the jobs where waitingOn is 0
+// FIXME: for completeness, it should also emit rows for parallel jobs
+// with unscheduled slots
 ddoc.views.runnable = {
     'map': function(doc) {
         if ((doc.status === 'waiting') && (! doc.waitingOn)) {
