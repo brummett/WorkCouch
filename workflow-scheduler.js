@@ -49,6 +49,7 @@ ddoc.updates.enqueue = function(doc,req) {
     doc.queueId     = req.query.queueId || req.form.queueId;
     doc.label       = req.query.label || req.form.label;
     doc.cmdline     = req.query.cmdline || req.form.cmdline;
+    doc.dependants  = ( req.query.dependant ? [ req.query.dependant ] : req.form.dependants );
     doc.waitingOn   = parseInt(req.query.waitingOn) || parseInt(req.form.waitingOn) || 0;
     doc.submitTime  = Date.now();  // milliseconds
 
