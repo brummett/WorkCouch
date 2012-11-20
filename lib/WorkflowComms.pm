@@ -72,9 +72,11 @@ sub get_runnable_jobs {
 }
 
 sub schedule_job {
-    my($self, $job_id, $mechanism) = @_;
+    my($self, $job, $mechanism) = @_;
 
-    my $job = $self->_get_doc($job_id);
+    if (! ref($job)) {
+        $job = $self->_get_doc($job);
+    }
     return unless $job;
 
     my $queued_job_id;

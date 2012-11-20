@@ -79,7 +79,7 @@ sub message_from_db {
             # A job is now ready to run
             print "Scheduling job ".$doc->{_id}."\n" if ($DEBUG);
             #$server->schedule_job($doc->{'_id'}, 'fork');
-            $server->schedule_job_fake($doc->{'_id'}, 'fork');
+            $server->schedule_job_fake($doc, 'fork');
         } else {
             die "Unknown doc received from changes: ".Data::Dumper::Dumper($doc);
         }
