@@ -25,11 +25,11 @@ my $changes_fh = $server->changes_for_scheduler($last_seq);
 my $changes_watcher = AnyEvent->io(fh => $changes_fh, poll => 'r',
                                     cb => sub { message_from_db($changes_fh) });
 
-my @children_to_signal;
-my $child_signal_watcher = AnyEvent->idle(cb => sub {
-        if (@children_to_signal) {
-            $server->signalChildJob(shift @children_to_signal);
-        }
+my @things_to_do;
+my $idle_watcher = AnyEvent->idle(cb => sub {
+    if (@things_to_do) {
+        shift(@things_to_do)->();
+    }
 });
 
 my $done = AnyEvent->condvar;
@@ -70,7 +70,9 @@ sub message_from_db {
             # a job is finished - decrement its dependants waitingOn
             if ($doc->{'dependants'}) {
                 print "Telling ".scalar(@{$doc->{'dependants'}})." child jobs to dec counter\n" if ($DEBUG);
-                push @children_to_signal, @{$doc->{'dependants'}};
+                foreach my $child_job ( @{$doc->{'dependants'}} ) {
+                    push @things_to_do, sub { $server->signalChildJob($child_job) };
+                }
             }
             $waiting_on_jobs--;
 
