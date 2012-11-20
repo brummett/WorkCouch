@@ -161,23 +161,6 @@ ddoc.updates.crashed = function(doc,req) {
 };
 
 
-// Remove the named dependancy from the doc
-ddoc.updates.removeDependancy = function(doc,req) {
-    if (!doc) {
-        return [null, 'error: No job matching that id'];
-    }
-
-    var i;
-    for (i = 0; i < doc.depends.length; i++) {
-        if (doc.depends[i] === req.query.job) {
-            doc.depends.splice(i, 1);
-            return [doc, 'success'];
-        }
-    }
-
-    return [null, 'error: No dependancy matching that id'];
-};
-
 // Decrement the waitingOn counter for a dependant job
 ddoc.updates.parentIsDone = function(doc,req) {
     if (!doc) {
@@ -199,18 +182,6 @@ ddoc.updates.addDependant = function(doc,req) {
     return [doc, 'success'];
 }
 
-// Return all the jobs with no dependant jobs
-//ddoc.views.runnable = {
-//    'map': function(doc) {
-//        if ( (doc.status === 'waiting')
-//            &&
-//            ((doc.depends === undefined) || (doc.depends === null) || (doc.depends.length === 0))
-//        ) {
-//            emit(doc._id, null);
-//        }
-//   }
-//};
-
 // Return all the jobs where waitingOn is 0
 ddoc.views.runnable = {
     'map': function(doc) {
@@ -219,40 +190,6 @@ ddoc.views.runnable = {
         }
     }
 };
-
-// keys are dependancies, values are the job ID that depends on that one
-//ddoc.views.dependancies = {
-//    'map': function(doc) {
-//        if ((doc.depends !== undefined) && (doc.depends !== null) && (doc.depends.length > 0)) {
-//            doc.depends.forEach(function(job_id) {
-//                emit(job_id, doc._id);
-//            });
-//        }
-//    }
-//};
-
-
-ddoc.filters.finishedJobs = function(doc, req) {
-    if (doc.status === 'done') {
-        return true;
-    } else {
-        return false;
-    }
-};
-
-ddoc.filters.newReadyToRun = function(doc, req) {
-    if (doc.status === 'done') {
-        // A job just finished
-        return true;
-    } else if ((doc.status === 'waiting')
-                && ((doc.depends !== undefined) && (doc.depends !== null) && (doc.depends.length > 0))
-    ) {
-        // A new job was submitted that has no dependancies
-        return true;
-    } else {
-        return false;
-    }
-}
 
 ddoc.filters.readyToRun = function(doc, req) {
     if (doc.status === 'done') {

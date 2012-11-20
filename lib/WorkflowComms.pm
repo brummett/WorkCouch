@@ -13,8 +13,6 @@ use IO::Select;
 my $designDoc = '_design/workflow-scheduler';
 my $job_runner = '/gscuser/abrummet/newworkflow/task-based/job-runner.pl';
 
-#$SIG{'CHLD'} = 'IGNORE';
-
 sub new {
     my $class = shift;
     my $uri = shift;
@@ -26,33 +24,8 @@ sub new {
 
     my $uriobj = URI->new($uri);
     $self->{'host'} = $uriobj->host_port;
-    
 
     return $self;
-}
-
-sub _save_doc {
-    my($self, $doc) = @_;
-
-    my $method;
-    my $uri = $self->{'uri'};
-    if ($doc->{_id}) {
-        $method = 'PUT';
-        $uri .= URI::Escape::uri_escape_utf8($doc->{_id});
-    } else {
-        $method = 'POST';
-    }
-
-    my $req = HTTP::Request->new($method => $uri);
-    $req->header('Content-Type', 'application/json');
-
-    my $resp = $self->{'server'}->request($req);
-
-    my $resp_headers = $self->json_decode($resp->content);
-    $doc->{_id} = $resp_headers->{id};
-    $doc->{_rev} = $resp_headers->{rev};
-
-    return $doc;
 }
 
 sub _get_doc {
@@ -65,7 +38,6 @@ sub _get_doc {
     my $resp = $self->{'server'}->request($req);
     return eval { $self->json_decode($resp->content) };
 }
-
 
 sub enqueue {
     my($self, $job) = @_;
@@ -82,20 +54,6 @@ sub enqueue {
     } else {
         return undef;
     }
-}
-
-sub get_next_runnable_job {
-    my $self = shift;
-
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_view', 'runnable');
-    $uri .= '?limit=1';
-    my $req = HTTP::Request->new(GET => $uri);
-    $req->header('Content-Type', 'application/json');
-
-    my $resp = $self->{'server'}->request($req);
-
-    my $data = $self->json_decode($resp->content);
-    return eval { $data->{'rows'}->[0]->{'id'} };
 }
 
 sub get_runnable_jobs {
@@ -149,38 +107,6 @@ sub schedule_job_fake {
 }
 
 
-# job is a completed parent job doc or job id
-# iterates over the dependants list and tells them to decrement
-# their waiting-on counter
-sub signalChildren {
-    my($self, $job) = @_;
-
-    # NOTE: We could also try making a view where the keys are job IDs
-    # and the value is the dependant list.  Maybe that would be faster than
-    # retrieving the whole doc?
-    if (!ref($job)) {
-        # it's a job id - get the doc
-        $job = $self->_get_doc($job);
-    }
-
-    my $base_uri = join('/', $self->{'uri'}, $designDoc, '_update', 'parentIsDone/');
-    foreach my $dep_job_id ( @{$job->{'dependants'}} ) {
-        my $uri = $base_uri . $dep_job_id;
-        my $req = HTTP::Request->new(PUT => $uri);
-        my $resp = eval { $self->{'server'}->request($req) };
-        if ($@) {
-            if ($@ =~ m/409/) {
-                # update conflict, try again
-                redo;
-            } else {
-                # somethiong else went wrong, rethrow the exception
-                die $@;
-            }
-        }
-    }
-}
-
-
 # job_id is a child job - tell it to decrement its waiting-on counter
 sub signalChildJob {
     my($self, $job_id) = @_;
@@ -203,7 +129,6 @@ sub signalChildJob {
         }
     }
 }
-
 
 sub add_dependant {
     my($self, $parent_job_id, $dep_job_id) = @_;
@@ -273,57 +198,6 @@ sub job_is_crashed {
 }
 
 
-sub remove_job_as_dependancy {
-    my($self, $job_id) = @_;
-
-    # first find which jobs depended on this one
-    my $uri = join('/', $self->{'uri'}, $designDoc, '_view','dependancies');
-    $uri .= '?key="' . $job_id . '"';
-    my $req = HTTP::Request->new(GET => $uri);
-    my $resp = $self->{'server'}->request($req);
-
-    my $data = $self->json_decode($resp->content);
-    my @dep_job_ids;
-    foreach ( @{$data->{'rows'}} ) {
-        push @dep_job_ids, $_->{'id'};
-    }
-
-    # now tell each of them that this nob is done
-    my $base_update_uri = join('/', $self->{'uri'}, $designDoc, '_update', 'removeDependancy');
-    foreach my $id (@dep_job_ids) {
-        my $update_uri = $base_update_uri . "/$id?job=$job_id";
-        my $req = HTTP::Request->new(PUT => $update_uri);
-        my $resp = $self->{'server'}->request($req);
-    }
-}
-
-
-sub Xchanges_for_scheduler {
-    my $self = shift;
-    my $since = shift;
-
-    my $design_doc_name = (split('/',$designDoc))[1];
-    my $filter_name = $design_doc_name . '/newReadyToRun';
-    my $uri = join('/', $self->{'uri'}, "_changes?feed=continuous&filter=$filter_name");
-    if ($since) {
-        $uri .= "&since=$since";
-    }
-    my $request = HTTP::Request->new(GET => $uri);
-
-    my $fh = IO::Socket::INET->new($self->{'host'});
-    $fh->print($request->as_string);
-
-    # read in the whole response
-    while (1) {
-        my $resp = $self->_read_line_from_fh($fh);
-        $resp =~ s/\r|\n//g;  # Remove newline sequence
-        last unless ($resp);
-    }
-
-    return $fh;
-}
-
-
 sub changes_for_scheduler {
     my $self = shift;
     my $since = shift;
@@ -348,7 +222,6 @@ sub changes_for_scheduler {
 
     return $fh;
 }
-
 
 sub json_decode {
     my $self = shift;
