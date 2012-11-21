@@ -79,13 +79,14 @@ ddoc.updates.enqueue = function(doc,req) {
 ddoc.updates.scheduled = function(doc,req) {
     if (!doc) {
         return [null, 'error: No job matching that id'];
-    } else if (doc.status != 'waiting') {
-        return [null, 'error: Job status is not "waiting"'];
-    }
+    }// else if (doc.status != 'waiting') {
+    //    return [null, 'error: Job status is not "waiting"'];
+    //}
 
     doc.status = 'scheduled';
     doc.scheduleTime = Date.now();
     doc.queueId = req.query.queueId || req.form.queueId;
+log('job '+doc._id+' is scheduled');
     return [doc, 'success'];
 }
 
@@ -96,14 +97,15 @@ ddoc.updates.scheduled = function(doc,req) {
 ddoc.updates.running = function(doc,req) {
     if (!doc) {
         return [null, 'error: No job matching that id'];
-    } else if (doc.status != 'scheduled') {
-        return [null, 'error: Job status is not "scheduled"'];
-    }
+    }// else if (doc.status != 'scheduled') {
+    //    return [null, 'error: Job status is not "scheduled"'];
+    //}
 
     doc.status = 'running';
     doc.startTime = Date.now();
     doc.hostname = req.query.hostname || req.form.hostname || req.peer;
     doc.pid = req.query.pid || req.form.pid;
+log('job '+doc._id+' is running');
     return [doc, 'success'];
 };
 
@@ -115,15 +117,16 @@ ddoc.updates.running = function(doc,req) {
 ddoc.updates.done = function(doc,req) {
     if (!doc) {
         return [null, 'error: No job matching that id'];
-    } else if (doc.status != 'running') {
-        return [null, 'error: Job status is not "running"'];
-    }
+    }// else if (doc.status != 'running') {
+    //    return [null, 'error: Job status is not "running"'];
+    //}
 
     doc.status = 'done';
     doc.doneTime = Date.now();
     doc.result = req.query.result || req.form.result;
     doc.cpuTime = parseFloat(req.query.cpuTime || req.form.cpuTime || 0);
     doc.maxMem = parseInt(req.query.maxMem || req.form.maxMem || 0);
+log('job '+doc._id+' is done');
     return [doc, 'success'];
 };
 
@@ -137,9 +140,9 @@ ddoc.updates.done = function(doc,req) {
 ddoc.updates.crashed = function(doc,req) {
     if (!doc) {
         return [null, 'error: No job matching that id'];
-    } else if (doc.status != 'running') {
-        return [null, 'error: Job status is not "running"'];
-    }
+    }// else if (doc.status != 'running') {
+    //    return [null, 'error: Job status is not "running"'];
+    //}
 
     doc.status = 'crashed';
     doc.doneTime = Date.now();
@@ -163,6 +166,7 @@ ddoc.updates.parentIsDone = function(doc,req) {
     }
 
     doc.waitingOn--;
+log('job '+doc._id+' waitingOn is now '+doc.waitingOn);
     return [doc, 'success'];
 }
 
@@ -189,9 +193,11 @@ ddoc.views.runnable = {
 ddoc.filters.readyToRun = function(doc, req) {
     if (doc.status === 'done') {
         // a job just finished
+log('job '+doc._id+' has finished!');
         return true;
     } else if ( (doc.status === 'waiting') && (! doc.waitingOn)) {
         // A job is now waiting on no new jobs
+log('job '+doc._id+' is now ready to run!');
         return true;
     } else {
         return false;
