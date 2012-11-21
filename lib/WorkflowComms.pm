@@ -37,7 +37,7 @@ sub new {
 sub _connection  {
     my $self = shift;
     my $connection = $self->{connections}->[ int(rand( @{$self->{connections}} )) ];
-    print "Sending to ".$connection->{host}."\n";
+    #print "Sending to ".$connection->{host}."\n";
     return $connection;
 }
 
@@ -53,16 +53,41 @@ sub _get_doc {
     return eval { $self->json_decode($resp->content) };
 }
 
+sub _update_retry_conflict {
+    my($self, $verb, $uri, $data) = @_;
+
+    my $conn = $self->_connection();
+    $uri = join('/', $conn->{'uri'}, $designDoc, $uri);
+    my $req = HTTP::Request->new($verb => $uri);
+    $req->header('Content-Type', 'application/json');
+    $req->content($self->{'json'}->encode($data)) if ($data);
+
+    my $server = $conn->{server};
+    my $resp;
+    print "Sending $verb to $uri\n" if ($main::DEBUG);
+    my $retry = 0;
+    while(! $resp) {
+        $resp = $server->request($req);
+        print "    response code ".$resp->code()."\n" if ($main::DEBUG);
+        $retry++;
+        print STDERR "*** Tried $retry times to send $verb to $uri\n" if ($retry > 100);
+        redo if ($resp and $resp->code() == 409);
+    }
+    return $resp;
+}
+
 sub enqueue {
     my($self, $job) = @_;
 
-    my $conn = $self->_connection();
-    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'enqueue');
-    my $req = HTTP::Request->new(POST => $uri);
-    $req->header('Content-Type', 'application/json');
-    $req->content($self->{'json'}->encode($job));
+    #my $conn = $self->_connection();
+    #my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'enqueue');
+    my $uri = join('/', '_update', 'enqueue');
+    my $resp = $self->_update_retry_conflict('POST', $uri, $job);
+    #my $req = HTTP::Request->new(POST => $uri);
+    #$req->header('Content-Type', 'application/json');
+    #$req->content($self->{'json'}->encode($job));
 
-    my $resp = $conn->{'server'}->request($req);
+    #my $resp = $conn->{'server'}->request($req);
 
     if ($resp->content =~ m/success: (\w+)/) {
         return $1;
@@ -122,6 +147,7 @@ sub schedule_job_fake {
     return unless $job;
 
     my $job_id = $job->{_id};
+print "Scheduling job $job_id\n";
     my $queued_job_id = 'fake';
     $self->job_is_queued($job_id, $queued_job_id);
     $self->job_is_running($job_id, $$);
@@ -133,34 +159,41 @@ sub schedule_job_fake {
 sub signalChildJob {
     my($self, $job_id) = @_;
 
-    my $conn = $self->_connection();
-    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'parentIsDone', $job_id);
-    my $req = HTTP::Request->new(PUT => $uri);
-    while(1) {
-        my $resp = eval { $conn->{'server'}->request($req) };
-        if ($@) {
-            if ($@ =~ m/409/) {
-                # update conflict, try again
-                redo;
-            } else {
-                # somethiong else went wrong, rethrow the exception
-                die $@;
-            }
-        } else {
-            #no exception, we're done
-            last;
-        }
-    }
+    my $uri = join('/', '_update', 'parentIsDone', $job_id);
+    my $resp = $self->_update_retry_conflict('PUT', $uri);
+
+    #my $conn = $self->_connection();
+    #my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'parentIsDone', $job_id);
+    #my $req = HTTP::Request->new(PUT => $uri);
+    #while(1) {
+    #    my $resp = eval { $conn->{'server'}->request($req) };
+    #    if ($@) {
+    #        if ($@ =~ m/409/) {
+    #            # update conflict, try again
+    #            redo;
+    #        } else {
+    #            # somethiong else went wrong, rethrow the exception
+    #            die $@;
+    #        }
+    #    } else {
+    #        #no exception, we're done
+    #        last;
+    #    }
+    #}
 }
 
 sub add_dependant {
     my($self, $parent_job_id, $dep_job_id) = @_;
 
-    my $conn = $self->_connection();
-    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'addDependant', $parent_job_id);
+    my $uri = join('/', '_update', 'addDependant', $parent_job_id);
     $uri .= "?jobId=$dep_job_id";
-    my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $conn->{'server'}->request($req);
+    my $resp = $self->_update_retry_conflict('PUT', $uri);
+
+    #my $conn = $self->_connection();
+    #my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'addDependant', $parent_job_id);
+    #$uri .= "?jobId=$dep_job_id";
+    #my $req = HTTP::Request->new(PUT => $uri);
+    #my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
@@ -168,11 +201,17 @@ sub add_dependant {
 
 sub job_is_queued {
     my($self,$job_id, $queued_job_id) = @_;
-    my $conn = $self->_connection();
-    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'scheduled', $job_id);
+
+print "job_id >>$job_id<< queued_job_id >>$queued_job_id<<\n";
+    my $uri = join('/', '_update', 'scheduled', $job_id);
     $uri .= "?queueId=$queued_job_id";
-    my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $conn->{'server'}->request($req);
+    my $resp = $self->_update_retry_conflict('PUT', $uri);
+
+    #my $conn = $self->_connection();
+    #my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'scheduled', $job_id);
+    #$uri .= "?queueId=$queued_job_id";
+    #my $req = HTTP::Request->new(PUT => $uri);
+    #my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
@@ -180,12 +219,16 @@ sub job_is_queued {
 sub job_is_running {
     my($self,$job_id, $pid) = @_;
 
-    my $conn = $self->_connection();
-    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'running', $job_id);
+    my $uri = join('/', '_update', 'running', $job_id);
     $uri .= "?pid=$pid";
+    my $resp = $self->_update_retry_conflict('PUT', $uri);
 
-    my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $conn->{'server'}->request($req);
+    #my $conn = $self->_connection();
+    #my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'running', $job_id);
+    #$uri .= "?pid=$pid";
+#
+#    my $req = HTTP::Request->new(PUT => $uri);
+#    my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
@@ -193,8 +236,9 @@ sub job_is_running {
 sub job_is_done {
     my($self, $job_id, %params) = @_;
 
-    my $conn = $self->_connection();
-    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'done', $job_id);
+    #my $conn = $self->_connection();
+    #my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'done', $job_id);
+    my $uri = join('/', '_update', 'done', $job_id);
     my @params;
     foreach my $key ( 'cpuTime', 'result', 'maxMem' ) {
         next unless exists($params{$key});
@@ -203,16 +247,19 @@ sub job_is_done {
     }
     $uri .= '?' . join('&', @params);
 
-    my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $conn->{'server'}->request($req);
+    my $resp = $self->_update_retry_conflict('PUT', $uri);
+
+    #my $req = HTTP::Request->new(PUT => $uri);
+    #my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
 sub job_is_crashed {
     my($self, $job_id, %params) = @_;
 
-    my $conn = $self->_connection();
-    my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'done', $job_id);
+    my $uri = join('/', '_update', 'done', $job_id);
+    #my $conn = $self->_connection();
+    #my $uri = join('/', $conn->{'uri'}, $designDoc, '_update', 'done', $job_id);
     my @params;
     foreach my $key ( 'cpuTime', 'result', 'maxMem', 'signal', 'coredump' ) {
         my $val = $params{$key};
@@ -220,8 +267,9 @@ sub job_is_crashed {
     }
     $uri .= '?' . join('&', @params);
 
-    my $req = HTTP::Request->new(PUT => $uri);
-    my $resp = $conn->{'server'}->request($req);
+    my $resp = $self->_update_retry_conflict('PUT', $uri);
+    #my $req = HTTP::Request->new(PUT => $uri);
+    #my $resp = $conn->{'server'}->request($req);
     return $resp->content;
 }
 
