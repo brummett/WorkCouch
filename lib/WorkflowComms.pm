@@ -56,21 +56,21 @@ sub _get_doc {
 sub _update_retry_conflict {
     my($self, $verb, $uri, $data) = @_;
 
-    my $conn = $self->_connection();
-    $uri = join('/', $conn->{'uri'}, $designDoc, $uri);
-    my $req = HTTP::Request->new($verb => $uri);
-    $req->header('Content-Type', 'application/json');
-    $req->content($self->{'json'}->encode($data)) if ($data);
-
-    my $server = $conn->{server};
     my $resp;
-    print "Sending $verb to $uri\n" if ($main::DEBUG);
-    my $retry = 0;
     while(! $resp) {
+        my $conn = $self->_connection();
+        my $send_uri = join('/', $conn->{'uri'}, $designDoc, $uri);
+        my $req = HTTP::Request->new($verb => $send_uri);
+        $req->header('Content-Type', 'application/json');
+        $req->content($self->{'json'}->encode($data)) if ($data);
+
+        my $server = $conn->{server};
+        print "Sending $verb to $send_uri\n" if ($main::DEBUG);
+        my $retry = 0;
         $resp = $server->request($req);
         print "    response code ".$resp->code()."\n" if ($main::DEBUG);
         $retry++;
-        print STDERR "*** Tried $retry times to send $verb to $uri\n" if ($retry > 100);
+        print STDERR "*** Tried $retry times to send $verb to $send_uri\n" if ($retry > 100);
         redo if ($resp and $resp->code() == 409);
     }
     return $resp;
