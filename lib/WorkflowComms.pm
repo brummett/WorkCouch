@@ -10,6 +10,8 @@ use URI::Escape;
 use IO::Socket;
 use IO::Select;
 
+use Data::Dumper;
+
 my $designDoc = '_design/workflow-scheduler';
 my $job_runner = '/gscuser/abrummet/newworkflow/task-based/job-runner.pl';
 
@@ -37,7 +39,7 @@ sub new {
 sub _connection  {
     my $self = shift;
     my $connection = $self->{connections}->[ int(rand( @{$self->{connections}} )) ];
-    #print "Sending to ".$connection->{host}."\n";
+    print "Sending to ".$connection->{host}."\n" if ($main::DEBUG);
     return $connection;
 }
 
@@ -147,10 +149,12 @@ sub schedule_job_fake {
     return unless $job;
 
     my $job_id = $job->{_id};
-print "Scheduling job $job_id\n";
     my $queued_job_id = 'fake';
+    print "Queueing job $job_id\n" if ($main::DEBUG);
     $self->job_is_queued($job_id, $queued_job_id);
+    print "Running job $job_id\n" if ($main::DEBUG);
     $self->job_is_running($job_id, $$);
+    print "Done job $job_id\n" if ($main::DEBUG);
     $self->job_is_done($job_id, result => 0);
 }
 

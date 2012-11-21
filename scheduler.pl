@@ -29,9 +29,16 @@ my $changes_watcher = AnyEvent->io(fh => $changes_fh, poll => 'r',
                                     cb => sub { message_from_db($changes_fh) });
 
 my @children_to_signal;
+my $noop = 0;
 my $child_signal_watcher = AnyEvent->idle(cb => sub {
-        print "In idle watcher...\n" if ($DEBUG);
+        print "In idle watcher...\n" if ($DEBUG and (! ($noop % 10000)));
+        if ($noop++ > 1000000) {
+            print "Idle too long $noop!\n";
+            exit;
+        }
+        
         if (@children_to_signal) {
+            $noop = 0;
             my $child_id = shift @children_to_signal;
             print "Signalling child $child_id\n" if ($DEBUG);
             $server->signalChildJob($child_id);
@@ -72,6 +79,9 @@ sub message_from_db {
             die "Couldn't parse json message: >>>$line<<<\n";
         }
         print "Got message from DB: ".Data::Dumper::Dumper($data) if ($DEBUG);
+if (@{$data->{changes}} > 1) {
+exit;
+}
 
         my $doc = $data->{'doc'};
         if ($doc->{'status'} eq 'done') {
