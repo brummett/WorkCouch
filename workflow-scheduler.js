@@ -190,6 +190,14 @@ ddoc.views.runnable = {
     }
 };
 
+ddoc.views.conflicted = {
+    'map': function(doc) {
+        if (doc._conflicts) {
+            emit(doc._id, doc);
+        }
+    }
+};
+
 ddoc.filters.readyToRun = function(doc, req) {
     if (doc.status === 'done') {
         // a job just finished
