@@ -30,7 +30,9 @@ foreach my $db ( keys %dbs ) {
     `NODE_PATH=~/lib/node_modules/ couchapp push workflow-scheduler.js $uri`;
 }
 
-# Set up pull replication between DBs
+sleep 2;
+
+# Set up push replication between DBs
 #
 # This uses the OLD _replicate API, since Ubuntu's couchDB is 1.0.1
 # see http://wiki.apache.org/couchdb/Replication
@@ -45,14 +47,17 @@ foreach my $local_db ( keys %dbs ) {
         next if ($local_uri eq $remote_uri);
 
         my $doc = {
-            source => $remote_uri,
-            target => 'workflow',
+            #source => $remote_uri,
+            #target => 'workflow',
+            target => $remote_uri,
+            source => 'workflow',
             continuous => JSON::true,
         };
         my $req = HTTP::Request->new(POST => $local_db . '/_replicate');
         $req->header('Content-Type', 'application/json');
         $req->content($json->encode($doc));
-        print "Replicating from $remote_uri to $local_uri\n";
+        #print "Replicating from $remote_uri to $local_uri\n";
+        print "Replicating from $local_uri to $remote_uri\n";
         my $resp = $server->request($req);
         die "Replication didn't work! from $remote_uri to $local_uri" unless ($resp->is_success);
     }
