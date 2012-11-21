@@ -7,7 +7,7 @@ use WorkflowComms;
 use AnyEvent;
 use Data::Dumper;
 
-my $DEBUG = 1;
+our $DEBUG = 1;
 
 my @uri = ( 'http://localhost:5985/workflow',
             'http://linus222:5985/workflow',
@@ -23,14 +23,18 @@ unless ($waiting_on_jobs) {
 
 my $last_seq = $server->current_update_seq();
 
+print "Getting fh for changes feed...\n" if ($DEBUG);
 my $changes_fh = $server->changes_for_scheduler($last_seq);
 my $changes_watcher = AnyEvent->io(fh => $changes_fh, poll => 'r',
                                     cb => sub { message_from_db($changes_fh) });
 
 my @children_to_signal;
 my $child_signal_watcher = AnyEvent->idle(cb => sub {
+        print "In idle watcher...\n" if ($DEBUG);
         if (@children_to_signal) {
-            $server->signalChildJob(shift @children_to_signal);
+            my $child_id = shift @children_to_signal;
+            print "Signalling child $child_id\n" if ($DEBUG);
+            $server->signalChildJob($child_id);
         }
 });
 
@@ -43,10 +47,12 @@ my $int_watcher = AnyEvent->signal(signal => 'INT', cb => sub{ $done->send });
 
 # Now, enter the event loop.  Further processing will be initiated from
 # the changes feed
+print "Entering the event loop!\n" if ($DEBUG);
 $done->recv();
 
 sub start_runnable_jobs {
     my $ready_job_ids = $server->get_runnable_jobs();
+    print "Starting ".scalar(@$ready_job_ids)." runnable jobs\n" if ($DEBUG);
     foreach ( @$ready_job_ids) {
         print "Scheduling job $_\n" if ($DEBUG);
         #$server->schedule_job($_, 'fork');
