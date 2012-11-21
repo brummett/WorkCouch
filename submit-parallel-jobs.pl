@@ -49,6 +49,9 @@ foreach (@middle_nodes) {
     my $id = $server->enqueue($_);
     push @middle_ids, $id;
 }
+sleep(0.1);
 
 $starting_node->{'dependants'} = \@middle_ids;
-$server->enqueue($starting_node);
+my $starting_id = $server->enqueue($starting_node);
+sleep 3;
+print "\n\n**** Starting node ID is $starting_id\n\n";
